@@ -195,6 +195,7 @@ Data → Preprocessing → Feature Engineering → Model Training → Evaluation
 
 ---
 
+<<<<<<< HEAD
 ## 📂 Project Structure
 
 ```bash
@@ -233,6 +234,8 @@ python src/spend_forecasting/train.py
 
 ---
 
+=======
+>>>>>>> 3516e83dc92ece7f73c2f819bc4076d5a2847478
 ## 👥 Team
 
 Developed by:
