@@ -5,14 +5,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
+from imblearn.over_sampling import SMOTE
 import joblib
 import shap
 import matplotlib.pyplot as plt
 
 
 df = pd.read_csv('data/credit_risk.csv')
-print("Shape: ", df.shape)
-print(df.head())
+# print("Shape: ", df.shape)
+# print(df.head())
 
 
 # Preprocessing
@@ -33,26 +34,36 @@ y = df['SeriousDlqin2yrs']
 # Train-test split
 x_train , x_text, y_train, y_test = train_test_split(x,y,test_size=0.2, random_state=42, stratify=y)
 
+# Apply SMOTE to handle class imbalance
+smote = SMOTE(random_state=42, k_neighbors=5)
+x_train_balanced, y_train_balanced = smote.fit_resample(x_train, y_train)
 
-# #training
-# lr = LogisticRegression(max_iter=1000)
-# lr.fit(x_train, y_train)
-# print("1st done")
+print(f"Original training set class distribution:")
+print(f"  Class 0: {(y_train == 0).sum()}")
+print(f"  Class 1: {(y_train == 1).sum()}")
+print(f"\nBalanced training set class distribution:")
+print(f"  Class 0: {(y_train_balanced == 0).sum()}")
+print(f"  Class 1: {(y_train_balanced == 1).sum()}")
 
-# rf = RandomForestClassifier(n_estimators=100, random_state=42)
-# rf.fit(x_train, y_train)
-# print("2nd done")
+#training with balanced data
+lr = LogisticRegression(max_iter=1000)
+lr.fit(x_train_balanced, y_train_balanced)
+print("1st done")
 
-# xgb = XGBClassifier(n_estimators=100, random_state=42, use_label_encoder=False, eval_metric='logloss')
-# xgb.fit(x_train, y_train)
-# print("3rd done")
+rf = RandomForestClassifier(n_estimators=100, random_state=42)
+rf.fit(x_train_balanced, y_train_balanced)
+print("2nd done")
+
+xgb = XGBClassifier(n_estimators=100, random_state=42, use_label_encoder=False, eval_metric='logloss')
+xgb.fit(x_train_balanced, y_train_balanced)
+print("3rd done")
 
 
-# for name,model in [("Logistic Regression", lr),("Random forest", rf), ("XGBoost", xgb)]:
-#     preds = model.predict(x_text)
-#     auc = roc_auc_score(y_test, model.predict_proba(x_text)[:, 1])
-#     print(f"\n{'='*40}")
-#     print(f" {name}")
-#     print(f"{'='*40}")
-#     print(classification_report(y_test, preds))
-#     print(f"ROC-AUC: {auc:.4f}")
+for name,model in [("Logistic Regression", lr),("Random forest", rf), ("XGBoost", xgb)]:
+    preds = model.predict(x_text)
+    auc = roc_auc_score(y_test, model.predict_proba(x_text)[:, 1])
+    print(f"\n{'='*40}")
+    print(f" {name}")
+    print(f"{'='*40}")
+    print(classification_report(y_test, preds))
+    print(f"ROC-AUC: {auc:.4f}")
