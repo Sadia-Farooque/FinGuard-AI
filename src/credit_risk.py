@@ -38,12 +38,13 @@ x_train , x_text, y_train, y_test = train_test_split(x,y,test_size=0.2, random_s
 smote = SMOTE(random_state=42, k_neighbors=5)
 x_train_balanced, y_train_balanced = smote.fit_resample(x_train, y_train)
 
-print(f"Original training set class distribution:")
-print(f"  Class 0: {(y_train == 0).sum()}")
-print(f"  Class 1: {(y_train == 1).sum()}")
-print(f"\nBalanced training set class distribution:")
-print(f"  Class 0: {(y_train_balanced == 0).sum()}")
-print(f"  Class 1: {(y_train_balanced == 1).sum()}")
+#showing before and after balance
+# print(f"Original training set class distribution:")
+# print(f"  Class 0: {(y_train == 0).sum()}")
+# print(f"  Class 1: {(y_train == 1).sum()}")
+# print(f"\nBalanced training set class distribution:")
+# print(f"  Class 0: {(y_train_balanced == 0).sum()}")
+# print(f"  Class 1: {(y_train_balanced == 1).sum()}")
 
 #training with balanced data
 lr = LogisticRegression(max_iter=1000)
@@ -59,6 +60,7 @@ xgb.fit(x_train_balanced, y_train_balanced)
 print("3rd done")
 
 
+#model evaluation
 for name,model in [("Logistic Regression", lr),("Random forest", rf), ("XGBoost", xgb)]:
     preds = model.predict(x_text)
     auc = roc_auc_score(y_test, model.predict_proba(x_text)[:, 1])
@@ -67,3 +69,9 @@ for name,model in [("Logistic Regression", lr),("Random forest", rf), ("XGBoost"
     print(f"{'='*40}")
     print(classification_report(y_test, preds))
     print(f"ROC-AUC: {auc:.4f}")
+
+
+#saving best model in pickel file
+joblib.dump(lr, 'models/credit_risk_model.pkl')
+#show that it saves
+print("Model saved as 'models/credit_risk_model.pkl'")
