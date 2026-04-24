@@ -47,13 +47,13 @@ x_train_balanced, y_train_balanced = smote.fit_resample(x_train, y_train)
 # print(f"  Class 1: {(y_train_balanced == 1).sum()}")
 
 #training with balanced data
-lr = LogisticRegression(max_iter=1000)
-lr.fit(x_train_balanced, y_train_balanced)
-print("1st done")
+# lr = LogisticRegression(max_iter=1000)
+# lr.fit(x_train_balanced, y_train_balanced)
+# print("1st done")
 
-rf = RandomForestClassifier(n_estimators=100, random_state=42)
-rf.fit(x_train_balanced, y_train_balanced)
-print("2nd done")
+# rf = RandomForestClassifier(n_estimators=100, random_state=42)
+# rf.fit(x_train_balanced, y_train_balanced)
+# print("2nd done")
 
 xgb = XGBClassifier(n_estimators=100, random_state=42, use_label_encoder=False, eval_metric='logloss')
 xgb.fit(x_train_balanced, y_train_balanced)
@@ -61,17 +61,26 @@ print("3rd done")
 
 
 #model evaluation
-for name,model in [("Logistic Regression", lr),("Random forest", rf), ("XGBoost", xgb)]:
-    preds = model.predict(x_text)
-    auc = roc_auc_score(y_test, model.predict_proba(x_text)[:, 1])
-    print(f"\n{'='*40}")
-    print(f" {name}")
-    print(f"{'='*40}")
-    print(classification_report(y_test, preds))
-    print(f"ROC-AUC: {auc:.4f}")
+# for name,model in [("Logistic Regression", lr),("Random forest", rf), ("XGBoost", xgb)]:
+#     preds = model.predict(x_text)
+#     auc = roc_auc_score(y_test, model.predict_proba(x_text)[:, 1])
+#     print(f"\n{'='*40}")
+#     print(f" {name}")
+#     print(f"{'='*40}")
+#     print(classification_report(y_test, preds))
+#     print(f"ROC-AUC: {auc:.4f}")
 
 
 #saving best model in pickel file
-joblib.dump(lr, 'models/credit_risk_model.pkl')
-#show that it saves
-print("Model saved as 'models/credit_risk_model.pkl'")
+# joblib.dump(lr, 'models/credit_risk_model.pkl')
+# #show that it saves
+# print("Model saved as 'models/credit_risk_model.pkl'")
+
+
+#adding SHAP explainability
+explainer = shap.TreeExplainer(xgb)
+shap_values = explainer.shap_values(x_text[:100])
+
+shap.summary_plot(shap_values, x_text[:100], show=False)
+plt.savefig('notebooks/nootbook1/figures/credit_risk_shap_summary.png', bbox_inches='tight')
+print("SHAP summary plot saved as 'notebooks/notebooks1/figures/credit_risk_shap_summary.png'")
