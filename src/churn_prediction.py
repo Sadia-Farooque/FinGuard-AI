@@ -70,14 +70,8 @@ joblib.dump(gb, 'models/churn_model.pkl')
 
 
 # SHAP Explainability
-# explainer = shap.TreeExplainer(gb)
-# shap_values = explainer.shap_values(x_test)
-
-# shap.summary_plot(shap_values, x_test, plot_type="bar")
-# plt.savefig('notebooks/nootbook1/figures/shap_summary_plot.png', bbox_inches='tight')
-
-explainer = shap.TreeExplainer(rf)
+explainer = shap.TreeExplainer(gb)
 shap_values = explainer.shap_values(x_test)
-# Use shap_values[1] for binary classification (positive class)
-shap.summary_plot(shap_values[1], x_test, plot_type="bar")
-plt.savefig('notebooks/nootbook1/figures/shap_summary_plot_rf.png', bbox_inches='tight')
+
+shap.summary_plot(shap_values, x_test, plot_type="bar")
+plt.savefig('notebooks/nootbook1/figures/shap_summary_plot.png', bbox_inches='tight')
