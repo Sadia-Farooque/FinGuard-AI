@@ -195,7 +195,7 @@ Data → Preprocessing → Feature Engineering → Model Training → Evaluation
 
 ---
 
-<<<<<<< HEAD
+<<<<<< HEAD
 ## 📂 Project Structure
 
 ```bash
