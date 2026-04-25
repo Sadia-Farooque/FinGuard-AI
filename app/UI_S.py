@@ -25,8 +25,8 @@ import datetime
 #  Only these two users can log in.
 # ─────────────────────────────────────────────
 ADMINS = {
-    "sadia baloch":   "Sadia123",
-    "abdul qudoos":   "Qudoos123",
+    "sadia baloch":   "sadia123",
+    "abdul qudoos":   "qudoos123",
 }
 
 # ─────────────────────────────────────────────
@@ -93,7 +93,7 @@ DUMMY_CUSTOMERS = _gen_customers(100)   # shared in-memory list
 try:
     import pymongo
     _mongo_client = pymongo.MongoClient(
-        "mongodb+srv://bacha200706_db_user:123@cluster0.6x7dx5h.mongodb.net/?appName=Cluster0",
+        "add your connection string ",
         serverSelectionTimeoutMS=2000
     )
     _mongo_client.admin.command("ping")
@@ -268,7 +268,7 @@ class LoginPage(tk.Frame):
 
         # ── sign-in button ──
         tk.Button(inner,
-                  text="SIGN IN",
+                  text="▶   SIGN IN",
                   command=self._attempt_login,
                   bg=ACCENT, fg=BG,
                   font=FONT_BTN,
@@ -452,8 +452,8 @@ class ParticleCanvas(tk.Canvas):
         self.after(500, self._init_particles)
 
     def _on_resize(self, e):
-        self.canvas_w = e.width
-        self.canvas_h = e.height
+        self._w = e.width
+        self._h = e.height
 
     def _init_particles(self):
         try:
@@ -462,12 +462,12 @@ class ParticleCanvas(tk.Canvas):
             return
         w = self.winfo_width()
         h = self.winfo_height()
-        self.canvas_w = w if w > 1 else 1200
-        self.canvas_h = h if h > 1 else 800
+        self._w = w if w > 1 else 1200
+        self._h = h if h > 1 else 800
         self._particles = []
         for _ in range(55):
-            x  = random.uniform(0, self.canvas_w)
-            y  = random.uniform(0, self.canvas_h)
+            x  = random.uniform(0, self._w)
+            y  = random.uniform(0, self._h)
             vx = random.uniform(-0.4, 0.4)
             vy = random.uniform(-0.4, 0.4)
             r  = random.uniform(1, 2.5)
@@ -483,7 +483,7 @@ class ParticleCanvas(tk.Canvas):
         except Exception:
             return
         self.delete("particle")
-        w, h = self.canvas_w, self.canvas_h
+        w, h = self._w, self._h
         pts  = self._particles
         for p in pts:
             p[0] += p[2];  p[1] += p[3]
@@ -618,6 +618,16 @@ class MetricCard(tk.Frame):
         self._tag.config(text=tag,           fg=color)
         self._bar.config(bg=color)
         self._anim(0, pct)
+        # ── subtle border flash: briefly highlight card border on update ──
+        self._flash_border(color, steps=6)
+
+    def _flash_border(self, color, steps):
+        """Briefly brightens the card border to the result colour then fades."""
+        if steps <= 0:
+            self.config(highlightbackground="#1e2a3a")
+            return
+        self.config(highlightbackground=color)
+        self.after(60, lambda: self._flash_border("#1e2a3a" if steps == 1 else color, steps - 1))
 
     def _anim(self, cur, target):
         if cur >= target: return
@@ -655,38 +665,93 @@ class SHAPPanel(tk.Frame):
 
 
 # ─────────────────────────────────────────────
-#  EXPLAIN PANEL  (unchanged)
+#  EXPLAIN PANEL  — FIXED: scrollable body so
+#  reasons are never clipped regardless of count
 # ─────────────────────────────────────────────
 class ExplainPanel(tk.Frame):
     def __init__(self, parent, **kw):
         super().__init__(parent, bg=CARD,
                          highlightbackground="#1e2a3a",
                          highlightthickness=1, **kw)
+
+        # ── header row ──
         tk.Label(self, text="AI EXPLAINABILITY",
-                 font=FONT_HEAD, fg=MUTED, bg=CARD).pack(anchor="w", padx=20, pady=(18,10))
-        self._body = tk.Frame(self, bg=CARD)
-        self._body.pack(fill="both", expand=True, padx=16, pady=(0,14))
+                 font=FONT_HEAD, fg=MUTED, bg=CARD).pack(anchor="w", padx=20, pady=(14,6))
+        tk.Frame(self, bg="#1e2a3a", height=1).pack(fill="x")
+
+        # ── scrollable container ──
+        container = tk.Frame(self, bg=CARD)
+        container.pack(fill="both", expand=True, padx=0, pady=0)
+
+        self._canvas = tk.Canvas(container, bg=CARD, highlightthickness=0)
+        scrollbar    = tk.Scrollbar(container, orient="vertical",
+                                    command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=scrollbar.set)
+        # only show scrollbar when needed — pack it last so it can be hidden
+        scrollbar.pack(side="right", fill="y")
+        self._canvas.pack(side="left", fill="both", expand=True)
+
+        # inner frame that holds the actual reason rows
+        self._body = tk.Frame(self._canvas, bg=CARD)
+        self._win  = self._canvas.create_window((0, 0), window=self._body, anchor="nw")
+
+        self._body.bind("<Configure>", self._on_frame_configure)
+        self._canvas.bind("<Configure>", self._on_canvas_resize)
+
+        # mouse-wheel scroll anywhere inside the panel
+        self._canvas.bind("<Enter>", self._bind_scroll)
+        self._canvas.bind("<Leave>", self._unbind_scroll)
+
         self._placeholder()
+
+    def _on_frame_configure(self, e):
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    def _on_canvas_resize(self, e):
+        # make inner frame match canvas width so rows fill horizontally
+        self._canvas.itemconfig(self._win, width=e.width)
+
+    def _bind_scroll(self, e):
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _unbind_scroll(self, e):
+        self._canvas.unbind_all("<MouseWheel>")
+
+    def _on_mousewheel(self, e):
+        self._canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
 
     def _placeholder(self):
         tk.Label(self._body,
-                 text="Run analysis to see AI-generated explanations.",
-                 font=("Segoe UI",9), fg=MUTED, bg=CARD, justify="left").pack(anchor="w", pady=16)
+                 text="Run analysis to see\nAI-generated explanations.",
+                 font=("Segoe UI", 9), fg=MUTED, bg=CARD,
+                 justify="left").pack(anchor="w", pady=16, padx=16)
 
     def render(self, reasons):
-        for w in self._body.winfo_children(): w.destroy()
+        # clear previous content
+        for w in self._body.winfo_children():
+            w.destroy()
+
         for icon, color, text in reasons:
             row = tk.Frame(self._body, bg="#0d1220",
                            highlightbackground="#1e2a3a", highlightthickness=1)
-            row.pack(fill="x", pady=4, ipady=2)
+            row.pack(fill="x", pady=3, padx=8)
+
+            # coloured icon badge
             badge = tk.Frame(row, bg=color, width=26, height=26)
-            badge.pack(side="left", padx=(10,10), pady=8)
+            badge.pack(side="left", padx=(10, 8), pady=8)
             badge.pack_propagate(False)
-            tk.Label(badge, text=icon, font=("Segoe UI",10,"bold"),
+            tk.Label(badge, text=icon, font=("Segoe UI", 10, "bold"),
                      fg=BG, bg=color).place(relx=0.5, rely=0.5, anchor="center")
-            tk.Label(row, text=text, font=("Segoe UI",9),
+
+            # reason text — wraplength set dynamically to panel width minus badges
+            tk.Label(row, text=text, font=("Segoe UI", 9),
                      fg=TEXT, bg="#0d1220",
-                     wraplength=260, justify="left").pack(side="left", fill="x", expand=True, pady=6)
+                     wraplength=240, justify="left",
+                     anchor="w").pack(side="left", fill="x", expand=True,
+                                      pady=6, padx=(0, 8))
+
+        # scroll back to top after re-render
+        self._canvas.after(30, lambda: self._canvas.yview_moveto(0))
 
 
 # ─────────────────────────────────────────────
@@ -761,6 +826,13 @@ class FinGuardApp:
         right = tk.Frame(bar, bg=PANEL)
         right.pack(side="right", padx=24)
 
+        # ── live clock — ticks every second, sits far right ──
+        self._clock_lbl = tk.Label(right,
+                                   text="",
+                                   font=("Consolas", 9), fg="#2a4a3a", bg=PANEL)
+        self._clock_lbl.pack(side="right", padx=(16, 0))
+        self._tick_clock()
+
         # ── NEW: show admin name next to pulse dot ──
         tk.Label(right,
                  text=f"Signed in as  {self._admin_name}",
@@ -768,6 +840,16 @@ class FinGuardApp:
         PulseDot(right).pack(side="left", padx=(0,6))
         tk.Label(right, text="Local AI Engine Active",
                  font=("Segoe UI",9), fg=MUTED, bg=PANEL).pack(side="left")
+
+    # ── live clock helper ─────────────────────
+    def _tick_clock(self):
+        """Updates the topbar clock label every second."""
+        now = datetime.datetime.now().strftime("%Y-%m-%d   %H:%M:%S")
+        try:
+            self._clock_lbl.config(text=now)
+            self.root.after(1000, self._tick_clock)
+        except Exception:
+            pass   # widget destroyed — stop ticking
 
     # ── DASHBOARD LAYOUT ─────────────────────
     def _build_dashboard(self):
@@ -1021,7 +1103,7 @@ class FinGuardApp:
         self._shap = SHAPPanel(lower)
         self._shap.pack(side="left", fill="both", expand=True, padx=(0,14))
 
-        right = tk.Frame(lower, bg=BG, width=310)
+        right = tk.Frame(lower, bg=BG, width=380)
         right.pack(side="right", fill="both")
         right.pack_propagate(False)
 
