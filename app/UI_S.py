@@ -1,13 +1,4 @@
-"""
-FinGuard AI — Complete Application
-===================================
-Changes added on top of original code (structure untouched):
-  1. LoginPage  — shown first; only two admins can sign in
-  2. 100 dummy customer records injected into MongoDB (or kept in memory)
-  3. HistoryPanel — tracks every customer whose data was analysed this session
-  4. FinGuardApp  — unchanged except wired to receive the logged-in username
-                   and the history panel is injected into the right column
-"""
+# FinGuard AI — Complete Application
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -21,6 +12,32 @@ import random
 import datetime
 
 # ─────────────────────────────────────────────
+#  SOUND ENGINE
+#  Uses winsound on Windows (built-in, zero install)
+# ─────────────────────────────────────────────
+try:
+    import winsound
+    def _beep(freq: int, dur: int):
+        """Play a short beep on a background thread so UI never blocks."""
+        threading.Thread(
+            target=winsound.Beep, args=(freq, dur), daemon=True
+        ).start()
+    def sound_click():   _beep(1200, 40)    # short high tick
+    def sound_confirm(): _beep(1400, 50); threading.Timer(0.08, lambda: _beep(1600, 60)).start()
+    def sound_analyze(): _beep(1100, 40); threading.Timer(0.06, lambda: _beep(1300, 100)).start()
+    def sound_error():   _beep(700, 150)    # softer warning tone
+    def sound_success(): _beep(1400, 50); threading.Timer(0.08, lambda: _beep(1800, 80)).start()
+    SOUND_ON = True
+except ImportError:
+
+    def sound_click():   pass
+    def sound_confirm(): pass
+    def sound_analyze(): pass
+    def sound_error():   pass
+    def sound_success(): pass
+    SOUND_ON = False
+
+# ─────────────────────────────────────────────
 #  ADMIN CREDENTIALS
 #  Only these two users can log in.
 # ─────────────────────────────────────────────
@@ -28,6 +45,11 @@ ADMINS = {
     "sadia baloch":   "sadia123",
     "abdul qudoos":   "qudoos123",
 }
+
+# ── NEW: Persistent Decision Tracking ─────
+# Key: customer_id, Value: "Approved" or "Rejected"
+ADMIN_DECISIONS = {}
+
 
 # ─────────────────────────────────────────────
 #  100 DUMMY CUSTOMERS
@@ -93,7 +115,7 @@ DUMMY_CUSTOMERS = _gen_customers(100)   # shared in-memory list
 try:
     import pymongo
     _mongo_client = pymongo.MongoClient(
-        "add your connection string ",
+        "mongodb+srv://bacha200706_db_user:123@cluster0.6x7dx5h.mongodb.net/?appName=Cluster0",
         serverSelectionTimeoutMS=2000
     )
     _mongo_client.admin.command("ping")
@@ -115,7 +137,7 @@ except Exception as _e:
     print(f"[MongoDB] Not connected — using in-memory dummy data: {_e}")
 
 # ─────────────────────────────────────────────
-#  THEME  (identical to original)
+#  THEME  
 # ─────────────────────────────────────────────
 BG      = "#0b0e1a"
 PANEL   = "#111827"
@@ -128,6 +150,7 @@ ACCENT  = "#1D9E75"
 DANGER  = "#ef4444"
 WARNING = "#f59e0b"
 SUCCESS = "#1D9E75"
+INFO    = "#3b82f6"
 
 FONT_SANS  = ("Segoe UI",  10)
 FONT_MONO  = ("Consolas",  11, "bold")
@@ -291,15 +314,18 @@ class LoginPage(tk.Frame):
         Success → hide login, show dashboard.
         Failure → show error message, clear password.
         """
+        sound_click()   # click sound on every attempt
         name     = self._name_var.get().strip().lower()
         password = self._pass_var.get().strip()
 
         if name in ADMINS and ADMINS[name] == password:
             # ── SUCCESS ──
+            sound_success()
             self._err_label.config(text="")
             self._on_success(self._name_var.get().strip())   # pass display name
         else:
             # ── FAILURE ──
+            sound_error()
             if name not in ADMINS:
                 msg = f"'{self._name_var.get().strip()}' is not a registered admin. Login failed."
             else:
@@ -338,7 +364,7 @@ class HistoryPanel(tk.Frame):
                  font=FONT_HEAD, fg=MUTED, bg=CARD).pack(side="left")
         # clear button
         tk.Button(header, text="CLEAR",
-                  command=self._clear,
+                  command=lambda: [sound_click(), self._clear()],
                   bg=CARD, fg=MUTED,
                   font=("Segoe UI", 7, "bold"),
                   relief="flat", bd=0,
@@ -367,6 +393,10 @@ class HistoryPanel(tk.Frame):
         self._body.bind("<Configure>", self._on_configure)
         self._canvas.bind("<Configure>", self._on_canvas_resize)
 
+        # mousewheel scroll — only active when mouse is inside panel
+        self._canvas.bind("<Enter>", lambda e: self._canvas.bind_all("<MouseWheel>", self._on_wheel))
+        self._canvas.bind("<Leave>", lambda e: self._canvas.unbind_all("<MouseWheel>"))
+
         self._placeholder()
 
     # ── scroll helpers ────────────────────────
@@ -374,7 +404,11 @@ class HistoryPanel(tk.Frame):
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
 
     def _on_canvas_resize(self, e):
+        # stretch inner frame to fill canvas width so rows fill horizontally
         self._canvas.itemconfig(self._win, width=e.width)
+
+    def _on_wheel(self, e):
+        self._canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
 
     # ── placeholder when empty ────────────────
     def _placeholder(self):
@@ -441,7 +475,7 @@ class HistoryPanel(tk.Frame):
 
 
 # ─────────────────────────────────────────────
-#  PARTICLE CANVAS  (unchanged from original)
+#  PARTICLE CANVAS  
 # ─────────────────────────────────────────────
 class ParticleCanvas(tk.Canvas):
     def __init__(self, parent, **kw):
@@ -452,8 +486,8 @@ class ParticleCanvas(tk.Canvas):
         self.after(500, self._init_particles)
 
     def _on_resize(self, e):
-        self._w = e.width
-        self._h = e.height
+        self.canvas_w = e.width
+        self.canvas_h = e.height
 
     def _init_particles(self):
         try:
@@ -462,12 +496,12 @@ class ParticleCanvas(tk.Canvas):
             return
         w = self.winfo_width()
         h = self.winfo_height()
-        self._w = w if w > 1 else 1200
-        self._h = h if h > 1 else 800
+        self.canvas_w = w if w > 1 else 1200
+        self.canvas_h = h if h > 1 else 800
         self._particles = []
         for _ in range(55):
-            x  = random.uniform(0, self._w)
-            y  = random.uniform(0, self._h)
+            x  = random.uniform(0, self.canvas_w)
+            y  = random.uniform(0, self.canvas_h)
             vx = random.uniform(-0.4, 0.4)
             vy = random.uniform(-0.4, 0.4)
             r  = random.uniform(1, 2.5)
@@ -483,7 +517,7 @@ class ParticleCanvas(tk.Canvas):
         except Exception:
             return
         self.delete("particle")
-        w, h = self._w, self._h
+        w, h = self.canvas_w, self.canvas_h
         pts  = self._particles
         for p in pts:
             p[0] += p[2];  p[1] += p[3]
@@ -511,7 +545,7 @@ class ParticleCanvas(tk.Canvas):
 
 
 # ─────────────────────────────────────────────
-#  GLOW SPHERE  (unchanged)
+#  GLOW SPHERE  
 # ─────────────────────────────────────────────
 class GlowSphere(tk.Canvas):
     def __init__(self, parent, color_inner, size=340, **kw):
@@ -534,7 +568,7 @@ class GlowSphere(tk.Canvas):
 
 
 # ─────────────────────────────────────────────
-#  GLASS FRAME  (unchanged)
+#  GLASS FRAME  
 # ─────────────────────────────────────────────
 class GlassFrame(tk.Frame):
     def __init__(self, parent, radius=14, **kw):
@@ -545,7 +579,7 @@ class GlassFrame(tk.Frame):
 
 
 # ─────────────────────────────────────────────
-#  GLOW BUTTON  (unchanged)
+#  GLOW BUTTON 
 # ─────────────────────────────────────────────
 class GlowButton(tk.Frame):
     def __init__(self, parent, text, command=None,
@@ -582,7 +616,7 @@ class GlowButton(tk.Frame):
 
 
 # ─────────────────────────────────────────────
-#  METRIC CARD  (unchanged)
+#  METRIC CARD
 # ─────────────────────────────────────────────
 class MetricCard(tk.Frame):
     def __init__(self, parent, title, **kw):
@@ -637,7 +671,7 @@ class MetricCard(tk.Frame):
 
 
 # ─────────────────────────────────────────────
-#  SHAP PANEL  (unchanged)
+#  SHAP PANEL
 # ─────────────────────────────────────────────
 class SHAPPanel(tk.Frame):
     def __init__(self, parent, **kw):
@@ -665,8 +699,7 @@ class SHAPPanel(tk.Frame):
 
 
 # ─────────────────────────────────────────────
-#  EXPLAIN PANEL  — FIXED: scrollable body so
-#  reasons are never clipped regardless of count
+#  EXPLAIN PANEL  
 # ─────────────────────────────────────────────
 class ExplainPanel(tk.Frame):
     def __init__(self, parent, **kw):
@@ -726,10 +759,19 @@ class ExplainPanel(tk.Frame):
                  font=("Segoe UI", 9), fg=MUTED, bg=CARD,
                  justify="left").pack(anchor="w", pady=16, padx=16)
 
-    def render(self, reasons):
+    def render(self, reasons, suggestion=None):
         # clear previous content
         for w in self._body.winfo_children():
             w.destroy()
+
+        if suggestion:
+            # ── final suggestion row ──
+            box = tk.Frame(self._body, bg="#1a2235",
+                           highlightbackground=suggestion["color"], highlightthickness=1)
+            box.pack(fill="x", pady=(8, 12), padx=8)
+            tk.Label(box, text=f"AI SUGGESTION:  {suggestion['text']}",
+                     font=("Segoe UI", 10, "bold"),
+                     fg=suggestion["color"], bg="#1a2235").pack(pady=12)
 
         for icon, color, text in reasons:
             row = tk.Frame(self._body, bg="#0d1220",
@@ -755,7 +797,7 @@ class ExplainPanel(tk.Frame):
 
 
 # ─────────────────────────────────────────────
-#  PULSE DOT  (unchanged)
+#  PULSE DOT  
 # ─────────────────────────────────────────────
 class PulseDot(tk.Canvas):
     def __init__(self, parent, **kw):
@@ -776,8 +818,70 @@ class PulseDot(tk.Canvas):
         self.after(50, self._tick)
 
 
+# ─────────────────────────────────────────────
+#  DECISION LOG PANEL
+#  Tracks Admin approvals/rejections.
+# ─────────────────────────────────────────────
+class DecisionPanel(tk.Frame):
+    def __init__(self, parent, **kw):
+        super().__init__(parent, bg=CARD,
+                         highlightbackground=BORDER,
+                         highlightthickness=1, **kw)
+        
+        header = tk.Frame(self, bg=CARD)
+        header.pack(fill="x", padx=16, pady=(14, 6))
+        tk.Label(header, text="DECISION LOG",
+                 font=FONT_HEAD, fg=MUTED, bg=CARD).pack(side="left")
+        
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
+
+        container = tk.Frame(self, bg=CARD)
+        container.pack(fill="both", expand=True)
+
+        self._canvas = tk.Canvas(container, bg=CARD, highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        self._canvas.pack(side="left", fill="both", expand=True)
+
+        self._body = tk.Frame(self._canvas, bg=CARD)
+        self._win  = self._canvas.create_window((0, 0), window=self._body, anchor="nw")
+
+        self._body.bind("<Configure>", lambda e: self._canvas.configure(scrollregion=self._canvas.bbox("all")))
+        self._canvas.bind("<Configure>", lambda e: self._canvas.itemconfig(self._win, width=e.width))
+
+        self._placeholder()
+
+    def _placeholder(self):
+        self._ph = tk.Label(self._body, text="No decisions logged yet.",
+                            font=("Segoe UI", 9), fg=MUTED, bg=CARD)
+        self._ph.pack(pady=20, padx=16, anchor="w")
+
+    def add_decision(self, rec, decision, color):
+        if hasattr(self, "_ph") and self._ph.winfo_exists():
+            self._ph.destroy()
+
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        row = tk.Frame(self._body, bg="#0d1220", highlightbackground=color, highlightthickness=1)
+        row.pack(fill="x", padx=8, pady=3, ipady=4)
+
+        left = tk.Frame(row, bg="#0d1220")
+        left.pack(side="left", padx=10)
+        tk.Label(left, text=f"{ts}  |  {rec.get('customer_id','?')}", 
+                 font=("Consolas", 8), fg=MUTED, bg="#0d1220").pack(anchor="w")
+        tk.Label(left, text=rec.get('name','Unknown'),
+                 font=("Segoe UI", 9, "bold"), fg=TEXT, bg="#0d1220").pack(anchor="w")
+
+        right = tk.Frame(row, bg=color)
+        right.pack(side="right", padx=10, pady=5)
+        tk.Label(right, text=decision.upper(), font=("Segoe UI", 8, "bold"),
+                 fg=BG, bg=color, padx=8).pack()
+        
+        self._canvas.after(50, lambda: self._canvas.yview_moveto(0))
+
+
 # ═══════════════════════════════════════════════════════════════
-#  MAIN DASHBOARD  (original FinGuardApp — minimal additions marked)
+#  MAIN DASHBOARD  
 # ═══════════════════════════════════════════════════════════════
 class FinGuardApp:
     """
@@ -788,10 +892,11 @@ class FinGuardApp:
       • _update_ui  — calls history.add_entry() after every analysis
     """
 
-    def __init__(self, root: tk.Tk, admin_name: str = "Admin"):
+    def __init__(self, root: tk.Tk, admin_name: str = "Admin", on_logout=None):
         self.root        = root
-        self._admin_name = admin_name   # ← NEW: received from login
-        self._last_rec   = {}           # ← NEW: tracks last DB record loaded
+        self._admin_name = admin_name
+        self._on_logout  = on_logout    # ← NEW: callback for sign out
+        self._last_rec   = {}
         root.title("FinGuard AI — Intelligent Financial Risk Engine")
         root.geometry("1200x800")
         root.minsize(1050, 700)
@@ -801,13 +906,24 @@ class FinGuardApp:
 
     # ── BUILD ────────────────────────────────
     def _build(self):
+        # particle canvas sits at the very back — same class as the login page
         self._particles = ParticleCanvas(self.root)
         self._particles.place(x=0, y=0, relwidth=1, relheight=1)
+
+        # glow spheres sit above particles
         GlowSphere(self.root, "#1D9E75", size=380).place(x=-80, y=-80)
         GlowSphere(self.root, "#3b82f6", size=460).place(
             relx=1.0, rely=1.0, anchor="se", x=80, y=80)
+
+        # foreground frame — bg=BG matches the canvas bg so panels look
+        # like they're floating on top of the particle layer
         self._fg = tk.Frame(self.root, bg=BG)
         self._fg.place(x=0, y=0, relwidth=1, relheight=1)
+
+        # IMPORTANT: lower the fg frame so particles render above glow spheres
+        # but below the panel widgets — order: particles → spheres → fg widgets
+        self._fg.lift()
+
         self._build_topbar()
         self._build_dashboard()
 
@@ -833,6 +949,17 @@ class FinGuardApp:
         self._clock_lbl.pack(side="right", padx=(16, 0))
         self._tick_clock()
 
+        # ── SIGN OUT button ──
+        tk.Button(right,
+                  text="[ SIGN OUT ]",
+                  command=self._logout,
+                  bg=PANEL, fg=DANGER,
+                  font=("Segoe UI", 8, "bold"),
+                  relief="flat", bd=0,
+                  activebackground=PANEL,
+                  activeforeground="#ff8888",
+                  cursor="hand2").pack(side="right", padx=(12, 0))
+
         # ── NEW: show admin name next to pulse dot ──
         tk.Label(right,
                  text=f"Signed in as  {self._admin_name}",
@@ -851,8 +978,20 @@ class FinGuardApp:
         except Exception:
             pass   # widget destroyed — stop ticking
 
+    def _logout(self):
+        """Clean up and return to login screen."""
+        if messagebox.askyesno("Sign Out", "Are you sure you want to sign out?"):
+            sound_click()
+            self._particles.stop()
+            for w in self.root.winfo_children():
+                w.destroy()
+            if self._on_logout:
+                self._on_logout()
+
     # ── DASHBOARD LAYOUT ─────────────────────
     def _build_dashboard(self):
+        # bg matches root bg — panels are opaque cards, gaps are transparent
+        # so the particle animation behind shows through the spacing
         layout = tk.Frame(self._fg, bg=BG)
         layout.pack(fill="both", expand=True, padx=18, pady=14)
         self._build_sidebar(layout)
@@ -868,7 +1007,7 @@ class FinGuardApp:
         btn_area.pack(side="bottom", fill="x", padx=16, pady=12)
 
         tk.Button(btn_area, text="⬡   LOAD FROM DATABASE",
-                  command=self._open_db_selector,
+                  command=lambda: [sound_click(), self._open_db_selector()],
                   bg=CARD, fg=ACCENT,
                   font=("Segoe UI",9,"bold"),
                   relief="flat", bd=0,
@@ -876,14 +1015,31 @@ class FinGuardApp:
                   activeforeground=ACCENT,
                   cursor="hand2").pack(fill="x", ipady=7, pady=(0,8))
 
-        tk.Button(btn_area, text="▶   ANALYZE RISK",
-                  command=self._run_analysis,
+        tk.Button(btn_area, text="ANALYZE RISK",
+                  command=lambda: [sound_analyze(), self._run_analysis()],
                   bg=ACCENT, fg=BG,
                   font=("Segoe UI",10,"bold"),
                   relief="flat", bd=0,
                   activebackground="#148560",
                   activeforeground=BG,
-                  cursor="hand2").pack(fill="x", ipady=10)
+                  cursor="hand2").pack(fill="x", ipady=10, pady=(0,12))
+
+        dec_row = tk.Frame(btn_area, bg=PANEL)
+        dec_row.pack(fill="x")
+
+        tk.Button(dec_row, text="APPROVE",
+                  command=lambda: self._finalize_decision("Approved", SUCCESS),
+                  bg="#0d1220", fg=SUCCESS,
+                  font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=1, highlightbackground=SUCCESS,
+                  highlightthickness=1, cursor="hand2").pack(side="left", fill="x", expand=True, padx=(0,4), ipady=6)
+
+        tk.Button(dec_row, text="REJECT",
+                  command=lambda: self._finalize_decision("Rejected", DANGER),
+                  bg="#0d1220", fg=DANGER,
+                  font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=1, highlightbackground=DANGER,
+                  highlightthickness=1, cursor="hand2").pack(side="right", fill="x", expand=True, padx=(4,0), ipady=6)
 
         tk.Label(side, text="CUSTOMER PROFILE",
                  font=FONT_HEAD, fg=MUTED, bg=PANEL).pack(anchor="w", padx=20, pady=(18,10))
@@ -946,14 +1102,21 @@ class FinGuardApp:
         Admins can search by name or ID to filter the list quickly.
         """
         # decide data source
+        # We start with our 100 core dummy customers.
+        records = list(DUMMY_CUSTOMERS)
+
         if MONGO_CONNECTED:
             try:
-                records = list(_mongo_collection.find({}, {"_id": 0}))
-            except Exception as e:
-                messagebox.showerror("DB Error", f"Failed to load records:\n{e}")
-                return
-        else:
-            records = DUMMY_CUSTOMERS   # fall back to in-memory list
+                db_records = list(_mongo_collection.find({}, {"_id": 0}))
+                # Combine both lists so we have the dummy ones PLUS the DB ones
+                # Use a dict to avoid duplicate IDs if some dummy ones were actually saved to DB
+                combined = {r["customer_id"]: r for r in records}
+                for r in db_records:
+                    if "customer_id" in r:
+                        combined[r["customer_id"]] = r
+                records = list(combined.values())
+            except Exception:
+                pass
 
         if not records:
             messagebox.showinfo("Empty", "No customers found.")
@@ -966,7 +1129,7 @@ class FinGuardApp:
         popup.resizable(False, False)
         popup.grab_set()
 
-        tk.Label(popup, text="SELECT CUSTOMER  (100 records)",
+        tk.Label(popup, text="SELECT CUSTOMER by name or ID",
                  font=FONT_HEAD, fg=MUTED, bg=PANEL).pack(anchor="w", padx=20, pady=(18,6))
 
         # ── search box ──
@@ -1009,13 +1172,24 @@ class FinGuardApp:
                 if q in haystack:
                     filtered.append(rec)
             listbox.delete(0, tk.END)
-            for rec in filtered:
+            for i, rec in enumerate(filtered):
                 cid  = rec.get("customer_id","-")
                 name = rec.get("name","Unknown")
                 age  = rec.get("age","?")
                 geo  = rec.get("geography","?")
+                
+                # Check for existing decision
+                status = ADMIN_DECISIONS.get(cid)
+                indicator = "  ● " if status else "    "  # Circle for decided ones
+                
                 listbox.insert(tk.END,
-                    f"  {cid}   {name:<22}  Age {age}   {geo}")
+                    f"{indicator}{cid}   {name:<22}  Age {age}   {geo}")
+                
+                # Color the circle if a decision was made
+                if status == "Approved":
+                    listbox.itemconfig(tk.END, fg=SUCCESS)
+                elif status == "Rejected":
+                    listbox.itemconfig(tk.END, fg=DANGER)
 
         _refresh_list()                         # populate immediately
         search_var.trace_add("write", _refresh_list)  # live filter
@@ -1047,13 +1221,31 @@ class FinGuardApp:
             popup.destroy()
             self._fill_from_db(rec)
 
-        tk.Button(popup, text="▶   LOAD & ANALYZE",
-                  command=_load_selected,
+        tk.Button(popup, text=" LOAD & ANALYZE",
+                  command=lambda: [sound_confirm(), _load_selected()],
                   bg=ACCENT, fg=BG,
                   font=("Segoe UI",10,"bold"),
                   relief="flat", bd=0,
                   activebackground="#148560",
                   cursor="hand2").pack(fill="x", padx=16, ipady=10, pady=(0,16))
+
+    def _finalize_decision(self, status, color):
+        """Logs the final Admin decision for the current customer."""
+        if not self._last_rec:
+            messagebox.showwarning("No Selection", "Please load and analyze a customer first.")
+            return
+        
+        cid = self._last_rec.get("customer_id")
+        if not cid:
+            messagebox.showwarning("Invalid Record", "This manual entry has no ID and cannot be logged.")
+            return
+
+        sound_confirm()
+        # Save to persistent tracking
+        ADMIN_DECISIONS[cid] = status
+        # Save to UI log
+        self._decision_log.add_decision(self._last_rec, status, color)
+        messagebox.showinfo("Decision Saved", f"Customer {self._last_rec.get('name')} has been {status}.")
 
     def _fill_from_db(self, rec):
         """Fill sidebar fields from a DB record then auto-run analysis."""
@@ -1103,17 +1295,23 @@ class FinGuardApp:
         self._shap = SHAPPanel(lower)
         self._shap.pack(side="left", fill="both", expand=True, padx=(0,14))
 
-        right = tk.Frame(lower, bg=BG, width=380)
+        right = tk.Frame(lower, bg=BG, width=420)
         right.pack(side="right", fill="both")
         right.pack_propagate(False)
 
-        # Explainability takes top ~55%
+        # Explainability takes top ~40%
         self._explain = ExplainPanel(right)
         self._explain.pack(fill="both", expand=True, pady=(0,8))
 
-        # ── NEW: History panel takes lower ~45% ──
-        self._history = HistoryPanel(right)
-        self._history.pack(fill="both", expand=True)
+        # History and Decision panels share the bottom ~60%
+        lower_right = tk.Frame(right, bg=BG)
+        lower_right.pack(fill="both", expand=True)
+
+        self._history = HistoryPanel(lower_right)
+        self._history.pack(side="left", fill="both", expand=True, padx=(0,4))
+
+        self._decision_log = DecisionPanel(lower_right)
+        self._decision_log.pack(side="right", fill="both", expand=True, padx=(4,0))
 
         # model badges
         badges = tk.Frame(right, bg=BG)
@@ -1238,7 +1436,17 @@ class FinGuardApp:
         if not reasons:
             reasons.append(("+", SUCCESS,
                 "Profile shows no major risk indicators across all four models."))
-        self._explain.render(reasons)
+        
+        # ── final suggestion based on average risk ──
+        avg_risk = (res["credit"] + res["fraud"] + res["churn"]) / 3
+        if avg_risk < 30:
+            suggest = {"text": "APPROVE (Strong Profile)", "color": SUCCESS}
+        elif avg_risk < 60:
+            suggest = {"text": "REVIEW (Moderate Risk)", "color": WARNING}
+        else:
+            suggest = {"text": "REJECT (High Default Risk)", "color": DANGER}
+
+        self._explain.render(reasons, suggestion=suggest)
 
         # ── NEW: log to history panel ──
         # Build a minimal record from current field values if no DB record was loaded
@@ -1286,9 +1494,8 @@ class AppController:
         Removes the login frame and launches the dashboard.
         """
         self._login_frame.destroy()
-        # Stop particle animation from login page (already destroyed with frame)
         # Build the dashboard, passing the admin's display name
-        FinGuardApp(self.root, admin_name=username)
+        FinGuardApp(self.root, admin_name=username, on_logout=self._show_login)
 
     def run(self):
         self.root.mainloop()
