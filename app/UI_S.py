@@ -115,8 +115,8 @@ DUMMY_CUSTOMERS = _gen_customers(100)   # shared in-memory list
 try:
     import pymongo
     _mongo_client = pymongo.MongoClient(
-        "mongodb+srv://bacha200706_db_user:123@cluster0.6x7dx5h.mongodb.net/?appName=Cluster0",
-        serverSelectionTimeoutMS=2000
+        "mongodb://localhost:27017/",
+        # serverSelectionTimeoutMS=2000
     )
     _mongo_client.admin.command("ping")
     _mongo_db         = _mongo_client["finguard"]
@@ -1324,8 +1324,173 @@ class FinGuardApp:
         tk.Label(badges, text="Active models",
                  font=("Segoe UI",8), fg=MUTED, bg=BG).pack(side="left", padx=6)
 
-    # ── ANALYSIS  (unchanged logic) ──────────
+    # ── ANALYSIS  (with CREATE functionality) ──────────
     def _run_analysis(self):
+        """
+        If a customer was loaded from DB, run analysis directly.
+        Otherwise, prompt for customer name to create a new record.
+        """
+        # Check if a customer was loaded from the database
+        if self._last_rec and self._last_rec.get("customer_id", "").startswith("CUS"):
+            # Customer loaded from DB - just run analysis
+            print(f"[ANALYSIS] Running analysis for DB customer: {self._last_rec.get('name')}")
+            threading.Thread(target=self._analyze, daemon=True).start()
+        else:
+            # No customer loaded - prompt for name to create new record
+            print("[ANALYSIS] No DB customer loaded. Prompting for name to create new record.")
+            self._show_create_customer_dialog()
+
+    def _show_create_customer_dialog(self):
+        """Show dialog to get customer name for CREATE operation."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Create New Customer Record")
+        dialog.geometry("400x180")
+        dialog.configure(bg=PANEL)
+        dialog.resizable(False, False)
+        dialog.grab_set()
+        
+        # Center the dialog on the screen
+        dialog.transient(self.root)
+        dialog.geometry("+%d+%d" % (
+            self.root.winfo_x() + self.root.winfo_width()//2 - 200,
+            self.root.winfo_y() + self.root.winfo_height()//2 - 90
+        ))
+        
+        # Header
+        header = tk.Frame(dialog, bg=PANEL)
+        header.pack(fill="x", padx=16, pady=(16,8))
+        tk.Label(header, text="📋 Create New Customer Record",
+                 font=("Segoe UI", 12, "bold"), fg=TEXT, bg=PANEL).pack(anchor="w")
+        tk.Label(header, text="Enter customer name to save this analysis:",
+                 font=("Segoe UI", 9), fg=MUTED, bg=PANEL).pack(anchor="w", pady=(4,0))
+        
+        # Input frame
+        input_frame = tk.Frame(dialog, bg=PANEL)
+        input_frame.pack(fill="x", padx=16, pady=(8,16))
+        
+        tk.Label(input_frame, text="Customer Name:",
+                 font=("Segoe UI", 9), fg=MUTED, bg=PANEL).pack(anchor="w", pady=(0,4))
+        
+        name_var = tk.StringVar()
+        name_entry = tk.Entry(input_frame, textvariable=name_var,
+                              font=("Consolas", 11), fg=ACCENT, bg="#0d1220",
+                              insertbackground=ACCENT, relief="flat",
+                              highlightbackground="#253045", highlightcolor=ACCENT,
+                              highlightthickness=1)
+        name_entry.pack(fill="x", ipady=6)
+        name_entry.focus()
+        
+        # Button frame
+        button_frame = tk.Frame(dialog, bg=PANEL)
+        button_frame.pack(fill="x", padx=16, pady=(0,16))
+        
+        def on_add():
+            customer_name = name_var.get().strip()
+            if not customer_name:
+                messagebox.showwarning("Empty Name", "Please enter a customer name.")
+                return
+            sound_confirm()
+            dialog.destroy()
+            # Now insert the record and run analysis
+            self._create_and_analyze(customer_name)
+        
+        def on_cancel():
+            sound_click()
+            dialog.destroy()
+        
+        # Bind Enter key to add
+        name_entry.bind("<Return>", lambda e: on_add())
+        
+        # Buttons
+        tk.Button(button_frame, text="ADD & ANALYZE",
+                  command=on_add,
+                  bg=ACCENT, fg=BG, font=("Segoe UI", 10, "bold"),
+                  relief="flat", bd=0, activebackground="#148560",
+                  activeforeground=BG, cursor="hand2").pack(side="right", padx=(4,0), ipady=6)
+        
+        tk.Button(button_frame, text="CANCEL",
+                  command=on_cancel,
+                  bg="#2a3d55", fg=TEXT, font=("Segoe UI", 10, "bold"),
+                  relief="flat", bd=0, activebackground="#3a4d65",
+                  activeforeground=TEXT, cursor="hand2").pack(side="right", padx=(0,4), ipady=6)
+
+    def _create_and_analyze(self, customer_name):
+        """Insert new customer record into database, then run analysis."""
+        try:
+            # Validate inputs
+            age = float(self._entries["Age"].get())
+            income = float(self._entries["Income"].get())
+            debt = float(self._entries["Debt Ratio"].get())
+            loan = float(self._entries["Loan Amount"].get())
+            score = float(self._entries["Credit Score"].get())
+            tenure = float(self._entries["Tenure (yrs)"].get())
+            prods = int(self._entries["Num Products"].get())
+            bal = float(self._entries["Balance"].get())
+            gender = self._gender.get()
+            geo = self._geo.get()
+            active = self._active.get()
+        except ValueError as ve:
+            messagebox.showerror("Input Error",
+                "Please check all input fields contain valid numbers.")
+            print(f"[CREATE] Validation error: {ve}")
+            return
+        
+        # Generate a unique customer ID
+        # Format: CUST followed by timestamp-based ID
+        customer_id = f"CUST{int(time.time() * 1000) % 1000000:06d}"
+        
+        # Create record dict matching MongoDB schema
+        new_record = {
+            "customer_id": customer_id,
+            "name": customer_name,
+            "age": int(age),
+            "income": income,
+            "debt_ratio": debt,
+            "loan_amount": loan,
+            "credit_score": score,
+            "tenure": int(tenure),
+            "num_products": prods,
+            "balance": bal,
+            "gender": gender,
+            "geography": geo,
+            "active_member": active,
+            "occupation": "Not Specified",
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        
+        print(f"[CREATE] Preparing record: {new_record}")
+        print(f"[CREATE] MONGO_CONNECTED: {MONGO_CONNECTED}")
+        print(f"[CREATE] _mongo_collection: {_mongo_collection}")
+        
+        # Try to insert into MongoDB
+        insert_success = False
+        try:
+            if MONGO_CONNECTED and _mongo_collection is not None:
+                result = _mongo_collection.insert_one(new_record)
+                print(f"[CREATE] Insert successful. ObjectId: {result.inserted_id}")
+                messagebox.showinfo("✓ Record Created", 
+                    f"Customer '{customer_name}'\nID: {customer_id}\n\n"
+                    f"Saved to database ✓\n"
+                    f"Now analyzing...")
+                sound_success()
+                insert_success = True
+            else:
+                print(f"[CREATE] MongoDB not available. MONGO_CONNECTED={MONGO_CONNECTED}, collection={_mongo_collection}")
+                messagebox.showinfo("⚠ Analyzing Only",
+                    f"Customer: {customer_name}\n\n"
+                    f"Database connection unavailable.\n"
+                    f"Proceeding with analysis only.")
+                sound_error()
+        except Exception as db_error:
+            print(f"[CREATE] Insert error: {type(db_error).__name__}: {str(db_error)}")
+            messagebox.showerror("Database Error",
+                f"Insert failed: {str(db_error)}\n\n"
+                f"Proceeding with analysis only.")
+            sound_error()
+        
+        # Store record for history regardless of insert success
+        self._last_rec = new_record
+        print(f"[CREATE] Starting analysis for: {customer_name}")
         threading.Thread(target=self._analyze, daemon=True).start()
 
     def _analyze(self):
