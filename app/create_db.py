@@ -9,7 +9,7 @@ Usage:
 import pymongo
 
 # ── Connect ──────────────────────────────────
-client     = pymongo.MongoClient("mongodb://localhost:27017/")
+client     = pymongo.MongoClient("mongodb+srv://bacha200706_db_user:123@cluster0.6x7dx5h.mongodb.net/?appName=Cluster0")
 db         = client["finguard"]
 collection = db["customers"]
 

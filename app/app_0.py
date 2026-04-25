@@ -14,7 +14,7 @@ from PIL import Image, ImageTk
 try:
     import pymongo
     _mongo_client = pymongo.MongoClient(
-        "mongodb://localhost:27017/",
+        "mongodb+srv://bacha200706_db_user:123@cluster0.6x7dx5h.mongodb.net/?appName=Cluster0",
         serverSelectionTimeoutMS=2000
     )
     # ping to confirm connection
