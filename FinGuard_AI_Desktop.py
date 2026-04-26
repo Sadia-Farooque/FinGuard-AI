@@ -272,26 +272,38 @@ def analyze():
     except: return jsonify({"error": "Invalid data"}), 400
 
     res = {}
-    if credit_model:
-        f = np.array([[debt, inc/12000, loan/50000, score/850, age/80, ten/30, bal/100000, prd]])
-        res["credit"] = credit_model.predict_proba(f)[0][1] * 100
-    else: res["credit"] = min(99, max(1, debt*60 + (loan/inc)*20))
+    try:
+        if credit_model:
+            f = np.array([[debt, inc/12000, loan/50000, score/850, age/80, ten/30, bal/100000, prd, gen, act]])
+            res["credit"] = credit_model.predict_proba(f)[0][1] * 100
+        else: res["credit"] = min(99, max(1, debt*60 + (loan/inc)*20))
+    except:
+        res["credit"] = min(99, max(1, debt*60 + (loan/inc)*20))
 
-    if fraud_model:
-        f = np.array([[loan, inc, age, score, bal, ten, prd, act]])
-        res["fraud"] = fraud_model.predict_proba(f)[0][1] * 100
-    else: res["fraud"] = min(99, max(1, (loan/inc)*15 + (1-act)*10))
+    try:
+        if fraud_model:
+            f = np.array([[loan, inc, age, score, bal, ten, prd, act]])
+            res["fraud"] = fraud_model.predict_proba(f)[0][1] * 100
+        else: res["fraud"] = min(99, max(1, (loan/inc)*15 + (1-act)*10))
+    except:
+        res["fraud"] = min(99, max(1, (loan/inc)*15 + (1-act)*10))
 
-    if churn_model:
-        f = np.array([[score, age, ten, bal, prd, 1, act, inc, gen, de, sp]])
-        res["churn"] = churn_model.predict_proba(f)[0][1] * 100
-    else: res["churn"] = min(99, max(1, (1-act)*40 + (1/max(prd,1))*30))
+    try:
+        if churn_model:
+            f = np.array([[score, age, ten, bal, prd, 1, act, inc, gen, de, sp]])
+            res["churn"] = churn_model.predict_proba(f)[0][1] * 100
+        else: res["churn"] = min(99, max(1, (1-act)*40 + (1/max(prd,1))*30))
+    except:
+        res["churn"] = min(99, max(1, (1-act)*40 + (1/max(prd,1))*30))
 
-    if spend_model:
-        f = np.array([[inc, age, bal, ten, prd, score]])
-        raw = float(spend_model.predict(f)[0])
-        res["spend"] = min(99, max(1, (raw/(inc*0.6))*50))
-    else: res["spend"] = min(99, max(1, (inc*0.35)/500))
+    try:
+        if spend_model:
+            f = np.array([[inc, age, bal, ten, prd, score]])
+            raw = float(spend_model.predict(f)[0])
+            res["spend"] = min(99, max(1, (raw/(inc*0.6))*50))
+        else: res["spend"] = min(99, max(1, (inc*0.35)/500))
+    except:
+        res["spend"] = min(99, max(1, (inc*0.35)/500))
 
     for k in res: res[k] = min(99, max(1, res[k]))
     
